@@ -135,3 +135,4 @@ Berikut dokumen Yang saya tambahkan dan yang saya jalankan melalui http://localh
 
 ![Hasil pengujian Localhost](screenshots/Test_Localhost.png)
 
+Untuk saat ini hasil pencarian menggunakan GET http://localhost:3000/api/products/1 , dan http://localhost:3000/api/products/2 tidak tersedia karena sebelumnya saya sudah menghapus nya dengan method : **DELETE**
