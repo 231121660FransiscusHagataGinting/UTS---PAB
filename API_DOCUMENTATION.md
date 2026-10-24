@@ -129,3 +129,9 @@ Hasil pengujian menunjukkan bahwa operasi Create,Read,Update,Delete produk telah
 Web Client dapat menggunakan API ini untuk mengambil dan mengelola data produk. Aplikasi web mengirimkan HTTP request ke endpoint backend, kemudian menerima response dalam format JSON.
 
 Untuk pengembangan lokal, alamat http://localhost:3000 digunakan ketika client berjalan pada komputer yang sama. Apabila client berjalan pada perangkat lain, alamat server perlu disesuaikan.
+
+
+Berikut dokumen Yang saya tambahkan dan yang saya jalankan melalui http://localhost:3000/api/products , Saya hanya menguji apakah tidak ada eror atau sebagainya.
+
+![Hasil pengujian Localhost](screenshots/Test_Localhost.png)
+
