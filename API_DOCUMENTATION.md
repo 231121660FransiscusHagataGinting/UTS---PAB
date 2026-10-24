@@ -96,6 +96,9 @@ Contoh URL:
 
 http://localhost:3000/api/products/1
 
+Hasilnya : 
+![Hasil pengujian GET produk](screenshots/Delete_Product.png)
+
 Endpoint ini digunakan untuk menghapus produk berdasarkan ID.
 
 **5. Cara Menjalankan API**
