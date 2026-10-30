@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>iPhone POS — Penjualan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="antialiased">
+  <div class="app-shell min-h-screen">
+    <aside class="sidebar fixed inset-y-0 left-0 z-20 flex flex-col" id="sidebar">
+      <a class="brand" href="#" aria-label="iPhone POS beranda">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 36 36" fill="none">
+            <rect x="8" y="3.5" width="20" height="29" rx="5.5" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M14 7h8M16 28.5h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="18" cy="18" r="5.2" fill="currentColor" opacity=".16"/>
+          </svg>
+        </span>
+        <span><strong>iPhone POS</strong><small>Point of sale</small></span>
+      </a>
+
+      <div class="nav-label">MENU UTAMA</div>
+      <nav class="side-nav" aria-label="Navigasi utama">
+        <button class="nav-item" data-nav="dashboard">
+          <span class="nav-icon">▦</span><span>Ringkasan</span>
+        </button>
+        <button class="nav-item active" data-nav="sales">
+          <span class="nav-icon">＋</span><span>Penjualan</span><span class="nav-dot"></span>
+        </button>
+        <button class="nav-item" data-nav="products">
+          <span class="nav-icon">▣</span><span>Produk</span>
+        </button>
+        <button class="nav-item" data-nav="customers">
+          <span class="nav-icon">♙</span><span>Pelanggan</span>
+        </button>
+        <button class="nav-item" data-nav="transactions">
+          <span class="nav-icon">◷</span><span>Transaksi</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+
+      <div class="api-status">
+        <span class="status-indicator" id="apiIndicator"></span>
+        <span>
+          <strong id="apiStatusText">Menghubungkan API</strong>
+          <small>Node.js · localhost:3000</small>
+        </span>
+      </div>
+
+      <div class="sidebar-user">
+        <span class="avatar avatar-blue">KS</span>
+        <span class="user-copy">
+          <strong>Kasir Satu</strong>
+          <small>Administrator</small>
+        </span>
+        <span class="more-icon">···</span>
+      </div>
+    </aside>
+
+    <main class="main-area min-h-screen">
+      <header class="topbar sticky top-0 z-10">
+        <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Buka navigasi">☰</button>
+        <div class="breadcrumbs">
+          <span>Workspace</span>
+          <span class="crumb-separator">/</span>
+          <strong id="pageCrumb">Penjualan</strong>
+        </div>
+        <div class="topbar-right">
+          <span class="today-label" id="todayLabel"></span>
+          <button class="icon-button notification-button" aria-label="Notifikasi">♧<i></i></button>
+          <span class="avatar avatar-blue top-avatar">KS</span>
+        </div>
+      </header>
+
+      <div class="content-wrap mx-auto w-full">
+        <section class="page-view" id="page-dashboard" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">TOKO IPHONE</p>
+              <h1>Ringkasan</h1>
+              <p class="subheading">Pantau aktivitas penjualan tokomu hari ini.</p>
+            </div>
+            <button class="button button-primary" data-go="sales">
+              <span>＋</span> Transaksi baru
+            </button>
+          </div>
+
+          <div class="stats-grid">
+            <article class="stat-card">
+              <div class="stat-top"><span>Penjualan hari ini</span><span class="stat-icon mint">↗</span></div>
+              <strong id="statSales">Rp0</strong>
+              <small class="stat-note">Total dari transaksi selesai</small>
+            </article>
+            <article class="stat-card">
+              <div class="stat-top"><span>Transaksi hari ini</span><span class="stat-icon lavender">▤</span></div>
+              <strong id="statOrders">0</strong>
+              <small class="stat-note">Pesanan berhasil dibayar</small>
+            </article>
+            <article class="stat-card">
+              <div class="stat-top"><span>Produk tersedia</span><span class="stat-icon peach">▣</span></div>
+              <strong id="statProducts">0</strong>
+              <small class="stat-note">Jenis produk di katalog</small>
+            </article>
+            <article class="stat-card">
+              <div class="stat-top"><span>Total pelanggan</span><span class="stat-icon sky">♙</span></div>
+              <strong id="statCustomers">0</strong>
+              <small class="stat-note">Pelanggan tersimpan</small>
+            </article>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="panel recent-panel">
+              <div class="panel-heading">
+                <div><h2>Transaksi terbaru</h2><p>Aktivitas penjualan terkini</p></div>
+                <button class="text-button" data-go="transactions">Lihat semua <span>→</span></button>
+              </div>
+              <div id="recentTransactions"></div>
+            </article>
+            <article class="panel stock-panel">
+              <div class="panel-heading">
+                <div><h2>Stok menipis</h2><p>Produk dengan stok 5 atau kurang</p></div>
+              </div>
+              <div id="lowStockList"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="page-view" id="page-sales">
+          <div class="page-heading sales-heading">
+            <div>
+              <p class="eyebrow">KASIR</p>
+              <h1>Penjualan</h1>
+              <p class="subheading">Pilih iPhone, masukkan pelanggan, lalu selesaikan pembayaran.</p>
+            </div>
+            <div class="sales-meta">
+              <span class="live-badge"><i></i> Kasir aktif</span>
+              <span id="salesDate"></span>
+            </div>
+          </div>
+
+          <div class="sales-layout">
+            <section class="catalog-section">
+              <div class="catalog-toolbar">
+                <label class="search-box">
+                  <span class="search-icon">⌕</span>
+                  <input id="productSearch" type="search" placeholder="Cari nama iPhone atau model..." autocomplete="off">
+                  <kbd>⌘ K</kbd>
+                </label>
+                <button class="button button-outline" data-go="products">
+                  <span>＋</span> Produk
+                </button>
+              </div>
+
+              <div class="category-tabs" id="categoryTabs"></div>
+              <div class="catalog-summary">
+                <span id="catalogCount">Memuat produk...</span>
+                <button class="text-button" id="refreshProducts">↻ <span>Perbarui</span></button>
+              </div>
+              <div class="product-grid" id="productGrid"></div>
+
+              <div class="empty-state" id="catalogEmpty" hidden>
+                <div class="empty-illustration">▣</div>
+                <h3>Belum ada produk</h3>
+                <p>Tambahkan produk iPhone ke API untuk mulai membuat transaksi.</p>
+                <button class="text-button" data-go="products">Kelola produk</button>
+              </div>
+            </section>
+
+            <aside class="order-panel">
+              <div class="order-header">
+                <div><h2>Pesanan</h2><p id="cartItemCount">0 item</p></div>
+                <button class="clear-cart" id="clearCart" title="Kosongkan keranjang">Kosongkan</button>
+              </div>
+
+              <div class="order-customer">
+                <label for="customerSelect">Pelanggan</label>
+                <select id="customerSelect"><option value="">Pelanggan umum</option></select>
+                <div class="customer-fields">
+                  <input id="customerName" type="text" placeholder="Nama pelanggan (opsional)" autocomplete="name">
+                  <input id="customerPhone" type="tel" placeholder="Nomor telepon (opsional)" autocomplete="tel">
+                </div>
+                <label class="check-row">
+                  <input type="checkbox" id="saveCustomer">
+                  <span>Simpan sebagai pelanggan</span>
+                </label>
+              </div>
+
+              <div class="cart-items" id="cartItems">
+                <div class="cart-empty">
+                  <span>＋</span>
+                  <strong>Keranjang masih kosong</strong>
+                  <small>Pilih produk dari katalog</small>
+                </div>
+              </div>
+
+              <div class="order-footer">
+                <div class="payment-field">
+                  <label for="paymentMethod">Metode pembayaran</label>
+                  <select id="paymentMethod">
+                    <option value="Tunai">Tunai</option>
+                    <option value="QRIS">QRIS</option>
+                    <option value="Transfer Bank">Transfer Bank</option>
+                    <option value="Kartu Debit/Kredit">Kartu Debit/Kredit</option>
+                  </select>
+                </div>
+                <div class="payment-field">
+                  <label for="amountPaid">Jumlah dibayar</label>
+                  <div class="amount-input">
+                    <span>Rp</span>
+                    <input id="amountPaid" type="number" min="0" step="1000" placeholder="0">
+                  </div>
+                </div>
+                <div class="totals">
+                  <div><span>Subtotal</span><strong id="cartSubtotal">Rp0</strong></div>
+                  <div><span>Pajak</span><strong class="muted-total">Termasuk</strong></div>
+                  <div class="total-line"><span>Total</span><strong id="cartTotal">Rp0</strong></div>
+                  <div><span>Kembalian</span><strong id="cartChange">Rp0</strong></div>
+                </div>
+                <button class="button button-primary checkout-button" id="checkoutButton" disabled>
+                  <span>✓</span> Selesaikan transaksi
+                </button>
+                <p class="secure-note"><span>▣</span> Stok diperbarui setelah transaksi berhasil</p>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="page-view" id="page-products" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">INVENTARIS</p>
+              <h1>Produk</h1>
+              <p class="subheading">Kelola katalog dan ketersediaan stok iPhone.</p>
+            </div>
+            <div class="heading-actions">
+              <button class="button button-primary" id="addProductButton"><span>＋</span> Tambah produk</button>
+            </div>
+          </div>
+
+          <div class="stats-strip">
+            <div><span class="strip-icon mint">▣</span><span><small>Total produk</small><strong id="productStatTotal">0</strong></span></div>
+            <div><span class="strip-icon peach">↘</span><span><small>Stok menipis</small><strong id="productStatLow">0 produk</strong></span></div>
+            <div><span class="strip-icon sky">◉</span><span><small>Nilai persediaan</small><strong id="productStatValue">Rp0</strong></span></div>
+          </div>
+
+          <div class="panel table-panel">
+            <div class="table-toolbar">
+              <label class="search-box table-search">
+                <span class="search-icon">⌕</span>
+                <input id="inventorySearch" type="search" placeholder="Cari produk...">
+              </label>
+              <span class="table-result" id="inventoryCount">0 produk</span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>PRODUK</th><th>KATEGORI</th><th>HARGA</th>
+                    <th>STOK</th><th>STATUS</th><th class="align-right">AKSI</th>
+                  </tr>
+                </thead>
+                <tbody id="productTableBody"></tbody>
+              </table>
+            </div>
+            <div class="table-empty" id="productTableEmpty" hidden>
+              Belum ada produk. Pilih Tambah produk untuk memasukkan produk ke SQLite3.
+            </div>
+          </div>
+        </section>
+
+        <section class="page-view" id="page-customers" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">DATA PELANGGAN</p>
+              <h1>Pelanggan</h1>
+              <p class="subheading">Simpan informasi pelanggan untuk transaksi berikutnya.</p>
+            </div>
+            <button class="button button-primary" id="addCustomerButton"><span>＋</span> Tambah pelanggan</button>
+          </div>
+
+          <div class="stats-strip customer-strip">
+            <div><span class="strip-icon lavender">♙</span><span><small>Total pelanggan</small><strong id="customerStatTotal">0</strong></span></div>
+            <div><span class="strip-icon mint">◷</span><span><small>Pelanggan bertransaksi</small><strong id="customerStatActive">0</strong></span></div>
+            <div><span class="strip-icon sky">♧</span><span><small>Transaksi tercatat</small><strong id="customerStatOrders">0</strong></span></div>
+          </div>
+
+          <div class="panel table-panel">
+            <div class="table-toolbar">
+              <label class="search-box table-search">
+                <span class="search-icon">⌕</span>
+                <input id="customerSearch" type="search" placeholder="Cari nama atau nomor telepon...">
+              </label>
+              <span class="table-result" id="customerCount">0 pelanggan</span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>PELANGGAN</th><th>NOMOR TELEPON</th><th>TRANSAKSI</th>
+                    <th>TOTAL BELANJA</th><th>BERGABUNG</th><th class="align-right">AKSI</th>
+                  </tr>
+                </thead>
+                <tbody id="customerTableBody"></tbody>
+              </table>
+            </div>
+            <div class="table-empty" id="customerTableEmpty" hidden>Belum ada pelanggan tersimpan.</div>
+          </div>
+        </section>
+
+        <section class="page-view" id="page-transactions" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">RIWAYAT PENJUALAN</p>
+              <h1>Transaksi</h1>
+              <p class="subheading">Lihat transaksi yang telah diselesaikan.</p>
+            </div>
+            <button class="button button-outline" id="exportTransactions">↓ <span>Ekspor CSV</span></button>
+          </div>
+
+          <div class="stats-strip transaction-strip">
+            <div><span class="strip-icon mint">↗</span><span><small>Total penjualan</small><strong id="transactionStatSales">Rp0</strong></span></div>
+            <div><span class="strip-icon lavender">▤</span><span><small>Jumlah transaksi</small><strong id="transactionStatCount">0</strong></span></div>
+            <div><span class="strip-icon sky">◷</span><span><small>Rata-rata transaksi</small><strong id="transactionStatAverage">Rp0</strong></span></div>
+          </div>
+
+          <div class="panel table-panel">
+            <div class="table-toolbar">
+              <label class="search-box table-search">
+                <span class="search-icon">⌕</span>
+                <input id="transactionSearch" type="search" placeholder="Cari ID transaksi atau pelanggan...">
+              </label>
+              <span class="table-result" id="transactionCount">0 transaksi</span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID TRANSAKSI</th><th>PELANGGAN</th><th>TANGGAL</th>
+                    <th>ITEM</th><th>PEMBAYARAN</th><th class="align-right">TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody id="transactionTableBody"></tbody>
+              </table>
+            </div>
+            <div class="table-empty" id="transactionTableEmpty" hidden>
+              Belum ada transaksi. Transaksi selesai akan muncul di sini.
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <div><p class="eyebrow" id="modalEyebrow">DATA</p><h2 id="modalTitle">Tambah data</h2></div>
+        <button class="icon-button modal-close" id="modalClose" aria-label="Tutup">×</button>
+      </div>
+
+      <form id="productForm" class="modal-form" hidden>
+        <input type="hidden" id="productId">
+        <label>Nama produk
+          <input id="productName" required maxlength="100" placeholder="Contoh: iPhone 16 Pro 256GB">
+        </label>
+        <div class="form-row">
+          <label>Harga jual
+            <input id="productPrice" required type="number" min="0" step="1000" placeholder="18999000">
+          </label>
+          <label>Stok awal
+            <input id="productStock" required type="number" min="0" step="1" placeholder="10">
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Kategori
+            <input id="productCategory" maxlength="50" placeholder="iPhone">
+          </label>
+          <label>Status
+            <select id="productAvailable">
+              <option value="1">Tersedia</option>
+              <option value="0">Tidak tersedia</option>
+            </select>
+          </label>
+        </div>
+        <label>Deskripsi <span class="optional-label">Opsional</span>
+          <textarea id="productDescription" rows="3" maxlength="300"
+            placeholder="Warna, kapasitas, atau catatan produk"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="button button-outline" data-close-modal>Batal</button>
+          <button type="submit" class="button button-primary" id="productSubmitButton">Simpan produk</button>
+        </div>
+      </form>
+
+      <form id="customerForm" class="modal-form" hidden>
+        <input type="hidden" id="customerId">
+        <label>Nama pelanggan
+          <input id="newCustomerName" required maxlength="100" autocomplete="name" placeholder="Nama lengkap">
+        </label>
+        <label>Nomor telepon
+          <input id="newCustomerPhone" type="tel" maxlength="30" autocomplete="tel" placeholder="08xxxxxxxxxx">
+        </label>
+        <label>Email <span class="optional-label">Opsional</span>
+          <input id="newCustomerEmail" type="email" maxlength="100" autocomplete="email" placeholder="nama@email.com">
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="button button-outline" data-close-modal>Batal</button>
+          <button type="submit" class="button button-primary">Simpan pelanggan</button>
+        </div>
+      </form>
+
+      <div id="receiptContent" hidden></div>
+    </section>
+  </div>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+  <script src="script.js" defer></script>
+</body>
+</html>
+
+<!-- Modal struk transaksi -->
+<div class="modal-backdrop" id="modalBackdrop" hidden>
+  <section
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="modalTitle"
+  >
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow" id="modalEyebrow">PEMBAYARAN SELESAI</p>
+        <h2 id="modalTitle">Struk transaksi</h2>
+      </div>
+      <button
+        class="icon-button modal-close"
+        id="modalClose"
+        aria-label="Tutup"
+      >×</button>
+    </div>
+
+    <!-- script.js mengisi bagian ini dengan detail transaksi dan tombol cetak -->
+    <div id="receiptContent" hidden></div>
+  </section>
+</div>
+
+<div class="toast-region" id="toastRegion" aria-live="polite"></div>
+<script src="script.js" defer></script>
