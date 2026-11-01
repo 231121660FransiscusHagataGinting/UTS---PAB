@@ -3,3 +3,6 @@ database.sqlite
 .env
 *.log
 database - Backup.sqlite
+database-backup.sqlite
+*.sqlite
+*.sqlite3
