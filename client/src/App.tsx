@@ -1,4 +1,4 @@
-
+import { createPortal } from 'react-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   getProducts,
@@ -6,7 +6,19 @@ import {
   updateProduct as updateProductApi,
   deleteProduct as deleteProductApi,
 } from './Services/api'
+import {
+  getCustomers,
+  createCustomer as createCustomerApi,
+} from './Services/customerApi'
+
+import type { Customer } from './Services/customerApi'
+import {
+  createTransaction as createTransactionApi,
+  getTransactions,
+} from './Services/transactionApi'
 import type { Product } from './types'
+import LoginPage from './LoginPage'
+import type { AuthUser } from './Services/authApi'
 
 type Page = 'dashboard' | 'sales' | 'products' | 'customers' | 'transactions'
 type PaymentMethod = 'Tunai' | 'QRIS' | 'Transfer Bank'
@@ -35,7 +47,18 @@ type Transaction = {
   change: number
 }
 
-const TRANSACTION_STORAGE_KEY = 'medan-istore-transactions'
+
+const AUTH_TOKEN_KEY = 'medan-istore-auth-token'
+const AUTH_USER_KEY = 'medan-istore-auth-user'
+
+function readStoredUser(): AuthUser | null {
+  try {
+    const saved = sessionStorage.getItem(AUTH_USER_KEY)
+    return saved ? (JSON.parse(saved) as AuthUser) : null
+  } catch {
+    return null
+  }
+}
 
 const menuItems: { id: Page; icon: string; label: string }[] = [
   { id: 'dashboard', icon: '▦', label: 'Ringkasan' },
@@ -45,22 +68,27 @@ const menuItems: { id: Page; icon: string; label: string }[] = [
   { id: 'transactions', icon: '◷', label: 'Transaksi' },
 ]
 
-function readTransactions(): Transaction[] {
-  try {
-    const saved = localStorage.getItem(TRANSACTION_STORAGE_KEY)
-    return saved ? (JSON.parse(saved) as Transaction[]) : []
-  } catch {
-    return []
-  }
-}
+
 
 function App() {
-  const [activePage, setActivePage] = useState<Page>('sales')
+  const [authToken, setAuthToken] = useState<string | null>(() => sessionStorage.getItem(AUTH_TOKEN_KEY))
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(readStoredUser)
+  const [activePage, setActivePage] = useState<Page>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showAddProduct, setShowAddProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
 
   const [products, setProducts] = useState<Product[]>([])
+  // State data pelanggan
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [loadingCustomers, setLoadingCustomers] = useState(false)
+  const [customerError, setCustomerError] = useState('')
+  // State form tambah pelanggan
+  const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [newCustomerName, setNewCustomerName] = useState('')
+  const [newCustomerPhone, setNewCustomerPhone] = useState('')
+  const [savingCustomer, setSavingCustomer] = useState(false)
+  const [customerFormError, setCustomerFormError] = useState('')
   const [loadingProducts, setLoadingProducts] = useState(true)
   const [productError, setProductError] = useState('')
   const [apiOnline, setApiOnline] = useState(false)
@@ -72,12 +100,13 @@ function App() {
   const [activeCategory, setActiveCategory] = useState('Semua')
 
   const [cart, setCart] = useState<CartItem[]>([])
-  const [transactions, setTransactions] = useState<Transaction[]>(readTransactions)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Tunai')
   const [amountPaid, setAmountPaid] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
+  const [selectedCustomerId, setSelectedCustomerId] = useState('')
   const [checkoutMessage, setCheckoutMessage] = useState('')
   const [isCheckingOut, setIsCheckingOut] = useState(false)
 
@@ -92,6 +121,11 @@ function App() {
   const [todayKey, setTodayKey] = useState(() =>
     new Date().toDateString()
   )
+
+  
+  // =========================================
+  // MENGAMBIL DATA PRODUK DARI BACKEND
+  // =========================================
 
   const loadProducts = useCallback(async () => {
     setLoadingProducts(true)
@@ -113,19 +147,122 @@ function App() {
     }
   }, [])
 
-  // Mengambil produk dari backend saat aplikasi dibuka.
-  useEffect(() => {
-    void loadProducts()
-  }, [loadProducts])
+  // =========================================
+  // MENGAMBIL RIWAYAT TRANSAKSI DARI SQLITE
+  // =========================================
 
-  // Menyimpan transaksi ke localStorage ketika transaksi berubah.
-  useEffect(() => {
-    localStorage.setItem(
-      TRANSACTION_STORAGE_KEY,
-      JSON.stringify(transactions)
+  const loadTransactions = useCallback(async () => {
+    try {
+      const data = await getTransactions()
+
+      const formattedTransactions: Transaction[] = data.map(
+        (transaction) => ({
+          id: transaction.invoiceNumber,
+          customer: transaction.customer,
+          phone: transaction.phone,
+          date: transaction.date ?? '',
+          items: transaction.items.map((item) => ({
+            productId: item.productId ?? 0,
+            productName: item.productName,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          paymentMethod: transaction.paymentMethod,
+          total: transaction.total,
+          amountPaid: transaction.amountPaid,
+          change: transaction.change,
+        })
+      )
+
+      setTransactions(formattedTransactions)
+
+    } catch (error) {
+      console.error(
+        'Gagal mengambil riwayat transaksi dari SQLite:',
+        error
+      )
+    }
+  }, [])
+
+  
+  // =========================================
+  // MENGAMBIL DATA PELANGGAN DARI SQLITE
+  // =========================================
+
+  const loadCustomers = useCallback(async () => {
+    setLoadingCustomers(true)
+    setCustomerError('')
+
+    try {
+      const data = await getCustomers()
+      setCustomers(data)
+    } catch (error) {
+      setCustomerError(
+        error instanceof Error
+          ? error.message
+          : 'Gagal mengambil data pelanggan.'
+      )
+    } finally {
+      setLoadingCustomers(false)
+    }
+  }, [])
+
+  
+async function handleSaveCustomer() {
+  const name = newCustomerName.trim()
+  const phone = newCustomerPhone.trim()
+
+  if (!name) {
+    setCustomerFormError('Nama pelanggan wajib diisi.')
+    return
+  }
+
+  setSavingCustomer(true)
+  setCustomerFormError('')
+
+  try {
+    await createCustomerApi({
+      name,
+      phone,
+    })
+
+    await loadCustomers()
+
+    setNewCustomerName('')
+    setNewCustomerPhone('')
+    setShowAddCustomer(false)
+
+    alert('Pelanggan berhasil ditambahkan.')
+  } catch (error) {
+    setCustomerFormError(
+      error instanceof Error
+        ? error.message
+        : 'Gagal menambahkan pelanggan.'
     )
-  }, [transactions])
+  } finally {
+    setSavingCustomer(false)
+  }
+}
 
+
+  // =========================================
+  // MEMUAT DATA SETELAH LOGIN BERHASIL
+  // =========================================
+
+  useEffect(() => {
+    if (!authToken || !currentUser) return
+
+    void loadProducts()
+    void loadTransactions()
+    void loadCustomers()
+  }, [
+    authToken,
+    currentUser,
+    loadProducts,
+    loadTransactions,
+    loadCustomers,
+  ])
+  
   // Memperbarui tanggal setiap 60 detik.
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -304,127 +441,162 @@ function App() {
     )
   })
 
-  const filteredCustomers = uniqueCustomers.filter((customer) =>
-    customer.toLowerCase().includes(customerSearch.toLowerCase())
-  )
+  const filteredCustomers = customers.filter((customer) =>
+  customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+  (customer.phone ?? '').includes(customerSearch)
+)
 
+const customersWithTransactions = customers.filter((customer) =>
+  transactions.some(
+    (transaction) =>
+      transaction.customer.trim().toLowerCase() ===
+      customer.name.trim().toLowerCase()
+  )
+).length
+  function handleLoginSuccess(token: string, user: AuthUser) {
+  sessionStorage.setItem(AUTH_TOKEN_KEY, token)
+  sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+
+  setAuthToken(token)
+  setCurrentUser(user)
+  setActivePage('dashboard')
+}
+
+function handleLogout() {
+  sessionStorage.removeItem(AUTH_TOKEN_KEY)
+  sessionStorage.removeItem(AUTH_USER_KEY)
+
+  setAuthToken(null)
+  setCurrentUser(null)
+  setCart([])
+  setSidebarOpen(false)
+}
   function navigate(page: Page) {
     setActivePage(page)
     setSidebarOpen(false)
   }
 
-  async function completePurchase() {
-    if (isCheckingOut) return
+  
+async function completePurchase() {
+  if (isCheckingOut) return
 
-    if (cart.length === 0) {
-      setCheckoutMessage('Keranjang masih kosong.')
-      return
+  if (cart.length === 0) {
+    setCheckoutMessage('Keranjang masih kosong.')
+    return
+  }
+
+  if (paymentMethod === 'Tunai' && cashPaid < cartSubtotal) {
+    setCheckoutMessage('Jumlah uang yang dibayar masih kurang.')
+    return
+  }
+
+  setIsCheckingOut(true)
+  setCheckoutMessage('')
+
+  try {
+    // =========================================
+    // 1. KIRIM TRANSAKSI KE BACKEND
+    // =========================================
+
+    const savedTransaction = await createTransactionApi({
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.trim(),
+      paymentMethod,
+      paidAmount:
+        paymentMethod === 'Tunai'
+          ? cashPaid
+          : cartSubtotal,
+      items: cart.map((item) => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+      })),
+    })
+
+    // =========================================
+    // 2. UBAH RESPONS BACKEND KE FORMAT FRONTEND
+    // =========================================
+
+    const newTransaction: Transaction = {
+      id: savedTransaction.invoice_number,
+      customer: savedTransaction.customer,
+      phone: savedTransaction.phone,
+      date: savedTransaction.transaction_date,
+      items: savedTransaction.items.map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        price: item.unitPrice,
+      })),
+      paymentMethod: savedTransaction.payment_method,
+      total: savedTransaction.total_amount,
+      amountPaid: savedTransaction.paid_amount,
+      change: savedTransaction.change_amount,
     }
 
-    if (paymentMethod === 'Tunai' && cashPaid < cartSubtotal) {
-      setCheckoutMessage('Jumlah uang yang dibayar masih kurang.')
-      return
-    }
+    // =========================================
+    // 3. PERBARUI RIWAYAT TRANSAKSI FRONTEND
+    // =========================================
 
-    setIsCheckingOut(true)
+    setTransactions((current) => [
+      newTransaction,
+      ...current,
+    ])
+
+    // =========================================
+    // 4. KOSONGKAN KERANJANG
+    // =========================================
+
+    setCart([])
+    setAmountPaid('')
+    setCustomerName('')
+    setCustomerPhone('')
+    setPaymentMethod('Tunai')
     setCheckoutMessage('')
+    setActivePage('transactions')
+
+    alert(
+      `Transaksi berhasil diselesaikan!\nNomor Invoice: ${savedTransaction.invoice_number}`
+    )
+
+    // =========================================
+    // 5. PERBARUI STOK DARI DATABASE
+    // =========================================
 
     try {
-      const latestProducts = await getProducts()
-
-      // Periksa stok terbaru sebelum menyelesaikan transaksi.
-      for (const item of cart) {
-        const latestProduct = latestProducts.find(
-          (product) => product.id === item.product.id
-        )
-
-        if (!latestProduct || latestProduct.stock < item.quantity) {
-          throw new Error(
-            `Stok ${item.product.name} tidak mencukupi. Silakan perbarui katalog.`
-          )
-        }
-      }
-
-      // Kurangi stok melalui API backend.
-      for (const item of cart) {
-        const latestProduct = latestProducts.find(
-          (product) => product.id === item.product.id
-        )
-
-        if (!latestProduct) {
-          throw new Error(`Produk ${item.product.name} tidak ditemukan.`)
-        }
-
-        if (item.quantity > latestProduct.stock) {
-          throw new Error(
-            `Stok ${latestProduct.name} tidak mencukupi. Stok tersedia: ${latestProduct.stock}.`
-          )
-        }
-
-        const newStock = latestProduct.stock - item.quantity
-
-        await updateProductApi(latestProduct.id, {
-          name: latestProduct.name,
-          price: latestProduct.price,
-          stock: newStock,
-          category: latestProduct.category,
-          description: latestProduct.description ?? '',
-          is_available: latestProduct.is_available,
-        })
-      }
-
-      // Ambil ulang data produk agar katalog menampilkan stok terbaru.
       const refreshedProducts = await getProducts()
+
       setProducts(refreshedProducts)
       setApiOnline(true)
-
-      const paid =
-        paymentMethod === 'Tunai' ? cashPaid : cartSubtotal
-
-      const newTransaction: Transaction = {
-        id: `TRX-${Date.now()}`,
-        customer: customerName.trim() || 'Pelanggan umum',
-        phone: customerPhone.trim(),
-        date: new Date().toISOString(),
-        items: cart.map((item) => ({
-          productId: item.product.id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          price: item.product.price,
-        })),
-        paymentMethod,
-        total: cartSubtotal,
-        amountPaid: paid,
-        change: paymentMethod === 'Tunai' ? paid - cartSubtotal : 0,
-      }
-
-      setTransactions((current) => [newTransaction, ...current])
-
-      setCart([])
-      setAmountPaid('')
-      setCustomerName('')
-      setCustomerPhone('')
-      setPaymentMethod('Tunai')
-      setCheckoutMessage('')
-
-      alert('Transaksi berhasil diselesaikan! Stok produk telah diperbarui.')
-      setActivePage('transactions')
-    } catch (error) {
-      setCheckoutMessage(
-        error instanceof Error
-          ? error.message
-          : 'Transaksi gagal diselesaikan.'
+      setProductError('')
+    } catch (refreshError) {
+      console.error(
+        'Transaksi berhasil, tetapi katalog gagal diperbarui:',
+        refreshError
       )
 
-      try {
-        await loadProducts()
-      } catch {
-        // Tidak perlu tindakan tambahan.
-      }
-    } finally {
-      setIsCheckingOut(false)
+      setApiOnline(false)
+      setProductError(
+        'Transaksi berhasil disimpan, tetapi katalog gagal diperbarui.'
+      )
     }
+
+  } catch (error) {
+    setCheckoutMessage(
+      error instanceof Error
+        ? error.message
+        : 'Transaksi gagal diselesaikan.'
+    )
+
+    try {
+      await loadProducts()
+    } catch {
+      // Tidak perlu tindakan tambahan.
+    }
+
+  } finally {
+    setIsCheckingOut(false)
   }
+}
 
   function handleCheckout() {
     if (cart.length === 0) {
@@ -518,7 +690,11 @@ function App() {
       )
     }
   }
-
+  if (!authToken || !currentUser) {
+    return (
+      <LoginPage onLoginSuccess={handleLoginSuccess} />
+    )
+  }
   return (
     <div className="app-shell min-h-screen">
       {/* SIDEBAR */}
@@ -534,13 +710,26 @@ function App() {
             navigate('sales')
           }}
         >
-          <span className="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 36 36" fill="none">
-              <rect x="8" y="3.5" width="20" height="29" rx="5.5" stroke="currentColor" strokeWidth="2.4" />
-              <path d="M14 7h8M16 28.5h4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-              <circle cx="18" cy="18" r="5.2" fill="currentColor" opacity=".16" />
-            </svg>
-          </span>
+          
+        <span
+          className="brand-mark"
+          aria-hidden="true"
+          style={{
+            width: '80px',
+            height: '80px',
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src="/images/logo-medan-istore.png"
+            alt=""
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'block',
+            }}
+          />
+        </span>
           <span>
             <strong>Medan iStore</strong>
             <small>Point of sale</small>
@@ -585,12 +774,32 @@ function App() {
         </div>
 
         <div className="sidebar-user">
-          <span className="avatar avatar-blue">KS</span>
-          <span className="user-copy">
-            <strong>Kasir Satu</strong>
-            <small>Administrator</small>
+          <span className="avatar avatar-blue">
+            {currentUser?.name
+              ?.split(' ')
+              .map((word) => word[0])
+              .slice(0, 2)
+              .join('')
+              .toUpperCase()}
           </span>
-          <span className="more-icon">···</span>
+
+          <span className="user-copy">
+            <strong>{currentUser?.name ?? 'Pengguna'}</strong>
+            <small>
+              {currentUser?.role === 'admin'
+                ? 'Administrator'
+                : 'Kasir'}
+            </small>
+          </span>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Keluar dari aplikasi"
+            className="ml-auto rounded-lg px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+          >
+            Keluar
+          </button>
         </div>
       </aside>
 
@@ -804,17 +1013,21 @@ function App() {
                             {product.stock <= 0 ? 'Stok habis' : `Stok ${product.stock}`}
                           </span>
 
-                          <img
-                            className="product-image"
-                            src={
-                              product.name.toLowerCase().includes('macbook')
+                          
+                        <img
+                          className="product-image"
+                          src={
+                            (product.category ?? '').toLowerCase() === 'airpods'
+                              ? '/images/AirPods.png'
+                              : product.name.toLowerCase().includes('macbook')
                                 ? '/images/MacBook.png'
                                 : product.name.toLowerCase().includes('watch')
                                   ? '/images/Apple%20Watch.png'
                                   : '/images/iPhone.png'
-                            }
-                            alt={product.name}
-                          />
+                          }
+                          alt={product.name}
+                        />
+
                         </div>
 
                         <div className="product-info">
@@ -894,10 +1107,35 @@ function App() {
 
                   <div className="order-customer">
                     <label htmlFor="customerSelect">Pelanggan</label>
-                    <select id="customerSelect">
-                      <option value="">Pelanggan umum</option>
-                    </select>
+                    <select id="customerSelect"
+                    value={selectedCustomerId}
+                      onChange={(event) => {
+                        const customerId = event.target.value
 
+                        setSelectedCustomerId(customerId)
+
+                        const selectedCustomer = customers.find(
+                          (customer) => String(customer.id) === customerId
+                        )
+
+                        if (selectedCustomer) {
+                          setCustomerName(selectedCustomer.name)
+                          setCustomerPhone(selectedCustomer.phone ?? '')
+                        } else {
+                          setCustomerName('')
+                          setCustomerPhone('')
+                        }
+                      }}
+                    >
+                      <option value="">Pelanggan umum</option>
+
+                      {customers.map((customer) => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name}
+                          {customer.phone ? ` — ${customer.phone}` : ''}
+                        </option>
+                      ))}
+                    </select>
                     <div className="customer-fields">
                       <input
                         id="customerName"
@@ -1386,100 +1624,289 @@ function App() {
             </div>
           )}
 
-          {/* PELANGGAN */}
-          {activePage === 'customers' && (
-            <section className="page-view" id="page-customers">
-              <div className="page-heading">
-                <div>
-                  <p className="eyebrow">DATA PELANGGAN</p>
-                  <h1>Pelanggan</h1>
-                  <p className="subheading">Simpan informasi pelanggan untuk transaksi berikutnya.</p>
-                </div>
-                <button
-                  className="button button-primary"
-                  id="addCustomerButton"
-                  onClick={() => navigate('sales')}
-                >
-                  <span>＋</span> Tambah pelanggan
-                </button>
+          
+
+              
+{/* PELANGGAN */}
+{activePage === 'customers' && (
+  <section className="page-view" id="page-customers">
+
+    {/* HEADER */}
+    <div className="page-heading">
+      <div>
+        <p className="eyebrow">DATA PELANGGAN</p>
+        <h1>Pelanggan</h1>
+        <p className="subheading">
+          Simpan informasi pelanggan untuk transaksi berikutnya.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        className="button button-primary"
+        id="addCustomerButton"
+        onClick={() => {
+          setNewCustomerName('')
+          setNewCustomerPhone('')
+          setCustomerFormError('')
+          setShowAddCustomer(true)
+        }}
+      >
+        <span>＋</span> Tambah pelanggan
+      </button>
+    </div>
+
+    {/* STATISTIK */}
+    <div className="stats-strip customer-strip">
+      <div>
+        <span className="strip-icon lavender">♙</span>
+        <span>
+          <small>Total pelanggan</small>
+          <strong>{customers.length}</strong>
+        </span>
+      </div>
+
+      <div>
+        <span className="strip-icon mint">◷</span>
+        <span>
+          <small>Pelanggan bertransaksi</small>
+          <strong>{customersWithTransactions}</strong>
+        </span>
+      </div>
+
+      <div>
+        <span className="strip-icon sky">♧</span>
+        <span>
+          <small>Transaksi tercatat</small>
+          <strong>{transactions.length}</strong>
+        </span>
+      </div>
+    </div>
+
+    {/* TABEL PELANGGAN */}
+    <div className="panel table-panel">
+
+      <div className="table-toolbar">
+        <label className="search-box table-search">
+          <span className="search-icon">⌕</span>
+          <input
+            id="customerSearch"
+            type="search"
+            placeholder="Cari nama atau nomor telepon..."
+            value={customerSearch}
+            onChange={(event) =>
+              setCustomerSearch(event.target.value)
+            }
+          />
+        </label>
+
+        <span className="table-result">
+          {filteredCustomers.length} pelanggan
+        </span>
+      </div>
+
+      {/* PESAN ERROR API */}
+      {customerError && (
+        <div className="table-empty" role="alert">
+          {customerError}
+
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => void loadCustomers()}
+          >
+            Coba lagi
+          </button>
+        </div>
+      )}
+
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>PELANGGAN</th>
+              <th>NOMOR TELEPON</th>
+              <th>TRANSAKSI</th>
+              <th>TOTAL BELANJA</th>
+              <th>BERGABUNG</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {loadingCustomers ? (
+              <tr>
+                <td colSpan={5}>
+                  Memuat data pelanggan...
+                </td>
+              </tr>
+            ) : filteredCustomers.length === 0 ? (
+              <tr>
+                <td colSpan={5}>
+                  Belum ada pelanggan tersimpan.
+                </td>
+              </tr>
+            ) : (
+              filteredCustomers.map((customer) => {
+                const customerTransactions = transactions.filter(
+                  (transaction) =>
+                    transaction.customer.trim().toLowerCase() ===
+                    customer.name.trim().toLowerCase()
+                )
+
+                const customerTotal = customerTransactions.reduce(
+                  (total, transaction) =>
+                    total + transaction.total,
+                  0
+                )
+
+                return (
+                  <tr key={customer.id}>
+                    <td>
+                      <strong>{customer.name}</strong>
+                    </td>
+
+                    <td>{customer.phone || '—'}</td>
+
+                    <td>
+                      {customerTransactions.length}
+                    </td>
+
+                    <td>
+                      {formatRupiah(customerTotal)}
+                    </td>
+
+                    <td>
+                      {customer.created_at
+                        ? new Date(
+                            customer.created_at.replace(' ', 'T') + 'Z'
+                          ).toLocaleDateString('id-ID')
+                        : '—'}
+                    </td>
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {/* MODAL TAMBAH PELANGGAN */}
+    {showAddCustomer && createPortal(
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+        <div
+  className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="customerModalTitle"
+>
+
+          {/* HEADER MODAL */}
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 
+               id="customerModalTitle"
+               className="text-xl font-bold text-slate-900">
+                Tambah Pelanggan
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Masukkan informasi pelanggan baru.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowAddCustomer(false)}
+              disabled={savingCustomer}
+              className="rounded-lg px-3 py-2 text-xl text-slate-500 hover:bg-slate-100"
+              aria-label="Tutup form"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* FORM */}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              void handleSaveCustomer()
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Nama Pelanggan *
+              </label>
+
+              <input
+                type="text"
+                value={newCustomerName}
+                onChange={(event) =>
+                  setNewCustomerName(event.target.value)
+                }
+                placeholder="Masukkan nama pelanggan"
+                required
+                disabled={savingCustomer}
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Nomor Telepon
+              </label>
+
+              <input
+                type="tel"
+                value={newCustomerPhone}
+                onChange={(event) =>
+                  setNewCustomerPhone(event.target.value)
+                }
+                placeholder="Contoh: 081234567890"
+                disabled={savingCustomer}
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {customerFormError && (
+              <div
+                role="alert"
+                className="rounded-lg bg-red-50 p-3 text-sm text-red-600"
+              >
+                {customerFormError}
               </div>
+            )}
 
-              <div className="stats-strip customer-strip">
-                <div>
-                  <span className="strip-icon lavender">♙</span>
-                  <span><small>Total pelanggan</small><strong>{uniqueCustomers.length}</strong></span>
-                </div>
-                <div>
-                  <span className="strip-icon mint">◷</span>
-                  <span><small>Pelanggan bertransaksi</small><strong>{uniqueCustomers.length}</strong></span>
-                </div>
-                <div>
-                  <span className="strip-icon sky">♧</span>
-                  <span><small>Transaksi tercatat</small><strong>{transactions.length}</strong></span>
-                </div>
-              </div>
+            {/* TOMBOL FORM */}
+            <div className="flex justify-end gap-3 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowAddCustomer(false)}
+                disabled={savingCustomer}
+                className="rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Batal
+              </button>
 
-              <div className="panel table-panel">
-                <div className="table-toolbar">
-                  <label className="search-box table-search">
-                    <span className="search-icon">⌕</span>
-                    <input
-                      id="customerSearch"
-                      type="search"
-                      placeholder="Cari nama pelanggan..."
-                      value={customerSearch}
-                      onChange={(event) => setCustomerSearch(event.target.value)}
-                    />
-                  </label>
-                  <span className="table-result">{filteredCustomers.length} pelanggan</span>
-                </div>
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>PELANGGAN</th>
-                        <th>NOMOR TELEPON</th>
-                        <th>TRANSAKSI</th>
-                        <th>TOTAL BELANJA</th>
-                        <th>BERGABUNG</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredCustomers.map((customer) => {
-                        const customerTransactions = transactions.filter(
-                          (transaction) => transaction.customer === customer
-                        )
+              <button
+                type="submit"
+                disabled={savingCustomer}
+                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {savingCustomer
+                  ? 'Menyimpan...'
+                  : 'Simpan Pelanggan'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>,
+      document.body
+    )}
 
-                        const customerTotal = customerTransactions.reduce(
-                          (total, transaction) => total + transaction.total,
-                          0
-                        )
-
-                        const latest = customerTransactions[customerTransactions.length - 1]
-
-                        return (
-                          <tr key={customer}>
-                            <td><strong>{customer}</strong></td>
-                            <td>{latest?.phone || '—'}</td>
-                            <td>{customerTransactions.length}</td>
-                            <td>{formatRupiah(customerTotal)}</td>
-                            <td>
-                              {latest
-                                ? new Date(latest.date).toLocaleDateString('id-ID')
-                                : '—'}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {filteredCustomers.length === 0 && (
-                  <div className="table-empty">Belum ada pelanggan tersimpan.</div>
-                )}
-              </div>
-            </section>
-          )}
+  </section>
+)}
 
           {/* TRANSAKSI */}
           {activePage === 'transactions' && (
@@ -1572,8 +1999,8 @@ function App() {
                   </div>
                 )}
               </div>
-            </section>
-          )}
+</section>
+)}
         </div>
       </main>
 

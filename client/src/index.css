@@ -26,7 +26,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .app-shell { min-height: 100vh; }
 .sidebar { position: fixed; z-index: 20; inset: 0 auto 0 0; display: flex; width: 242px; flex-direction: column; padding: 25px 16px 16px; color: #a6b2c5; background: var(--navy); }
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 9px; color: #fff; text-decoration: none; }
-.brand-mark { display: grid; width: 41px; height: 41px; place-items: center; color: #fff; border: 1px solid rgba(255,255,255,.15); border-radius: 13px; background: linear-gradient(145deg, #527df4, #3562d7); box-shadow: 0 6px 18px rgba(46, 95, 224, .3); }
+.brand-mark { display: grid; width: 52px; height: 52px; place-items: center; color: #fff; border: 1px solid rgba(255,255,255,.15); border-radius: 13px; background: linear-gradient(145deg, #527df4, #3562d7); box-shadow: 0 6px 18px rgba(46, 95, 224, .3); }
 .brand-mark svg { width: 26px; height: 26px; }
 .brand strong, .brand small, .api-status strong, .api-status small, .sidebar-user strong, .sidebar-user small { display: block; }
 .brand strong { font: 800 14px "Manrope", sans-serif; letter-spacing: -.2px; }

@@ -1,8 +1,19 @@
+# Dependencies
 node_modules/
-database.sqlite
+
+# Environment
 .env
-*.log
-database - Backup.sqlite
-database-backup.sqlite
+
+# Database
+database.sqlite
 *.sqlite
 *.sqlite3
+
+# Database backup
+database - Backup.sqlite
+database-backup.sqlite
+/database-backup-sebelum-migrasi.sqbpro
+/sqlite3_backup.sql
+
+# Logs
+*.log
